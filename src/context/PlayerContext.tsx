@@ -82,7 +82,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         await TrackPlayer.setupPlayer({});
         await TrackPlayer.updateOptions({
           android: {
-            appKilledPlaybackBehavior: AppKilledPlaybackBehavior.StopPlaybackAndRemoveNotification,
+            appKilledPlaybackBehavior: AppKilledPlaybackBehavior.ContinuePlayback,
           },
           capabilities: [
             Capability.Play,
@@ -364,8 +364,12 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setQueue(newQ);
       setQueueIndex(0);
       try {
+        const currentProgress = await TrackPlayer.getProgress();
+        const currentPos = currentProgress.position;
+
         await TrackPlayer.reset();
         await TrackPlayer.add(newQ.map(t => mapToPlayerTrack(t)));
+        await TrackPlayer.seekTo(currentPos);
         await TrackPlayer.play();
       } catch (e) {
         console.error('Error shuffling queue:', e);

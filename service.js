@@ -17,8 +17,15 @@ module.exports = async function() {
     TrackPlayer.skipToNext().catch(() => {});
   });
 
-  TrackPlayer.addEventListener(Event.RemotePrevious, () => {
-    TrackPlayer.skipToPrevious().catch(() => {});
+  TrackPlayer.addEventListener(Event.RemotePrevious, async () => {
+    try {
+      const progress = await TrackPlayer.getProgress();
+      if (progress.position > 3) {
+        await TrackPlayer.seekTo(0);
+      } else {
+        await TrackPlayer.skipToPrevious();
+      }
+    } catch (e) {}
   });
 
   TrackPlayer.addEventListener(Event.RemoteSeek, (event) => {

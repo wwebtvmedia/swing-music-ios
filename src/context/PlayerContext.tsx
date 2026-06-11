@@ -92,6 +92,12 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const setup = async () => {
       try {
         await TrackPlayer.setupPlayer({});
+      } catch (e) {
+        // Player might already be setup
+      }
+
+      // ALWAYS update options, even if already setup, to reconnect the JS bridge capabilities
+      try {
         await TrackPlayer.updateOptions({
           android: {
             appKilledPlaybackBehavior: AppKilledPlaybackBehavior.ContinuePlayback,
@@ -110,14 +116,12 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             Capability.SkipToPrevious,
           ],
         });
-        if (isMounted) {
-          setIsPlayerReady(true);
-        }
       } catch (e) {
-        // Player might already be setup
-        if (isMounted) {
-          setIsPlayerReady(true);
-        }
+        console.error('Error updating options:', e);
+      }
+
+      if (isMounted) {
+        setIsPlayerReady(true);
       }
     };
     setup();

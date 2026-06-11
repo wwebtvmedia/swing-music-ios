@@ -69,8 +69,20 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const activeTrack = useActiveTrack();
   const progress = useProgress();
-  const { playing } = useIsPlaying();
-  const isPlaying = !!playing;
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  useEffect(() => {
+    const fetchState = async () => {
+      const state = await TrackPlayer.getPlaybackState();
+      setIsPlaying(state.state === State.Playing || state.state === State.Buffering);
+    };
+    fetchState();
+    
+    const sub = TrackPlayer.addEventListener(Event.PlaybackState, (event) => {
+      setIsPlaying(event.state === State.Playing || event.state === State.Buffering);
+    });
+    return () => sub.remove();
+  }, []);
 
   const loggedCurrentTrack = useRef<string | null>(null);
 
@@ -265,12 +277,16 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const togglePlay = async () => {
-    await ensureReady();
+    console.log('togglePlay clicked. isPlaying:', isPlaying, 'isPlayerReady:', isPlayerReady);
     try {
       if (isPlaying) {
+        console.log('Attempting TrackPlayer.pause()');
         await TrackPlayer.pause();
+        console.log('TrackPlayer.pause() completed');
       } else {
+        console.log('Attempting TrackPlayer.play()');
         await TrackPlayer.play();
+        console.log('TrackPlayer.play() completed');
       }
     } catch (e) {
       console.error('Error toggling play state:', e);

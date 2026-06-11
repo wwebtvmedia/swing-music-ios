@@ -14,7 +14,8 @@
         "backgroundColor": "#121212",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
-      "package": "com.swingmusicapp"
+      "package": "com.swingmusicapp",
+      "usesCleartextTraffic": true
     },
     "ios": {
       "bundleIdentifier": "com.swingmusicapp",

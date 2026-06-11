@@ -117,12 +117,19 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Listen for track changes to update the current queue index
   useEffect(() => {
     const subscription = TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, async (event) => {
+      console.log('PlaybackActiveTrackChanged event:', event);
       if (event.index !== undefined && event.index !== null) {
         setQueueIndex(event.index);
       }
     });
+    
+    const errorSubscription = TrackPlayer.addEventListener(Event.PlaybackError, (event) => {
+      console.error('PlaybackError event:', event);
+    });
+    
     return () => {
       subscription.remove();
+      errorSubscription.remove();
     };
   }, []);
 
@@ -163,10 +170,13 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [isPlaying, position, currentTrack]);
 
   const buildStreamUrl = (track: Track) => {
-    if (!baseUrl || !track.trackhash || !track.filepath) return null;
+    if (!baseUrl || !track.trackhash) return 'http://127.0.0.1/dummy.mp3';
     const base = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-    const encodedFilePath = encodeURIComponent(track.filepath);
-    return `${base}/file/${track.trackhash}/legacy?filepath=${encodedFilePath}`;
+    if (track.filepath) {
+      const encodedFilePath = encodeURIComponent(track.filepath);
+      return `${base}/file/${track.trackhash}/legacy?filepath=${encodedFilePath}`;
+    }
+    return `${base}/file/${track.trackhash}`;
   };
 
   const getImageUrl = (path?: string) => {
@@ -178,8 +188,8 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const mapToPlayerTrack = (track: Track) => {
     return {
-      id: track.trackhash || '',
-      url: buildStreamUrl(track) || '',
+      id: track.trackhash || `fallback-${Date.now()}-${Math.random()}`,
+      url: buildStreamUrl(track) || 'http://127.0.0.1/dummy.mp3',
       title: track.title || 'Unknown Title',
       artist: Array.isArray(track.artists)
         ? track.artists.map(a => a?.name).filter(Boolean).join(', ')
@@ -197,7 +207,17 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const playAtIndex = async (index: number, targetQueue: Track[]) => {
-    if (!isPlayerReady || index < 0 || index >= targetQueue.length) return;
+    if (!isPlayerReady) {
+      console.warn('Player not ready during playAtIndex, attempting setup');
+      try {
+        await TrackPlayer.setupPlayer({});
+        setIsPlayerReady(true);
+      } catch (e) {
+        console.warn('Player setup during playAtIndex failed or already setup', e);
+        setIsPlayerReady(true);
+      }
+    }
+    if (index < 0 || index >= targetQueue.length) return;
     try {
       await TrackPlayer.reset();
       await TrackPlayer.add(targetQueue.map(t => mapToPlayerTrack(t)));
@@ -233,8 +253,19 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  const ensureReady = async () => {
+    if (!isPlayerReady) {
+      try {
+        await TrackPlayer.setupPlayer({});
+        setIsPlayerReady(true);
+      } catch (e) {
+        setIsPlayerReady(true);
+      }
+    }
+  };
+
   const togglePlay = async () => {
-    if (!isPlayerReady) return;
+    await ensureReady();
     try {
       if (isPlaying) {
         await TrackPlayer.pause();
@@ -247,7 +278,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const playNext = async () => {
-    if (!isPlayerReady) return;
+    await ensureReady();
     try {
       await TrackPlayer.skipToNext();
       await TrackPlayer.play();
@@ -259,24 +290,25 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           await TrackPlayer.play();
           setQueueIndex(0);
         } catch (err) {
-          console.error('Failed to skip to start:', err);
+          console.error('Error looping queue:', err);
         }
+      } else {
+        console.error('Failed to skip to next:', e);
       }
     }
   };
 
   const playPrev = async () => {
-    if (!isPlayerReady) return;
+    await ensureReady();
     try {
-      const currentPos = (await TrackPlayer.getProgress()).position;
-      if (currentPos > 3) {
+      if (position > 3000) {
         await TrackPlayer.seekTo(0);
       } else {
         await TrackPlayer.skipToPrevious();
         await TrackPlayer.play();
       }
     } catch (e) {
-      // Ignore skip errors
+      console.error('Error skipping to previous:', e);
     }
   };
 

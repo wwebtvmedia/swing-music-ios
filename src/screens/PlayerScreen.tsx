@@ -89,7 +89,16 @@ export default function PlayerScreen() {
     }
   };
 
-  if (!currentTrack) return null;
+  if (!currentTrack) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.primary || '#1DB954'} />
+        <Text style={{ color: '#b3b3b3', marginTop: 16, fontSize: 14, fontWeight: '600' }}>
+          Loading track...
+        </Text>
+      </SafeAreaView>
+    );
+  }
 
   const progress = duration > 0 ? position / duration : 0;
   const imageUrl = getImgUrl(baseUrl, currentTrack.image, 'large');

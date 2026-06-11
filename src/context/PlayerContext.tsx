@@ -181,7 +181,9 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       id: track.trackhash || '',
       url: buildStreamUrl(track) || '',
       title: track.title || 'Unknown Title',
-      artist: track.artists?.map(a => a.name).join(', ') || 'Unknown Artist',
+      artist: Array.isArray(track.artists)
+        ? track.artists.map(a => a?.name).filter(Boolean).join(', ')
+        : (track.artist || 'Unknown Artist'),
       artwork: getImageUrl(track.image),
       duration: track.duration,
       headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,

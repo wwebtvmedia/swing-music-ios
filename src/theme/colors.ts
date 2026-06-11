@@ -1,0 +1,15 @@
+export const colors = {
+  background: '#121212',
+  surface: '#181818',
+  primary: '#1DB954',
+  textPrimary: '#FFFFFF',
+  textSecondary: '#B3B3B3',
+  bottomNavBackground: '#000000',
+  bottomNavActive: '#FFFFFF',
+  bottomNavInactive: '#B3B3B3',
+  playerBackground: '#181818',
+  progressBarBackground: '#4D4D4D',
+  progressBarForeground: '#1DB954',
+  searchBarBackground: '#FFFFFF',
+  searchBarText: '#000000',
+};

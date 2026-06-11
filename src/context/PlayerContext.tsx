@@ -150,7 +150,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         artist: activeTrack.artist || undefined,
         is_favorite: (activeTrack as any).is_favorite,
       } as Track)
-    : null;
+    : queue[queueIndex] || null;
 
   // Log track play history after playing for 5 seconds
   useEffect(() => {

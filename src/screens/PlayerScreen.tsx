@@ -136,7 +136,9 @@ export default function PlayerScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.trackTitle} numberOfLines={1}>{currentTrack.title}</Text>
               <Text style={styles.trackArtist} numberOfLines={1}>
-                {currentTrack.artists?.map(a => a.name).join(', ') || currentTrack.album || ''}
+                {Array.isArray(currentTrack.artists)
+                  ? currentTrack.artists.map(a => a?.name).filter(Boolean).join(', ')
+                  : (currentTrack.artist || currentTrack.album || '')}
               </Text>
             </View>
             <TouchableOpacity onPress={toggleTrackFavorite} style={{ padding: 8 }}>
@@ -238,7 +240,9 @@ export default function PlayerScreen() {
               <View style={styles.menuHeaderInfo}>
                 <Text style={styles.menuTitle} numberOfLines={1}>{currentTrack.title}</Text>
                 <Text style={styles.menuArtist} numberOfLines={1}>
-                  {currentTrack.artists?.map(a => a.name).join(', ') || ''}
+                  {Array.isArray(currentTrack.artists)
+                    ? currentTrack.artists.map(a => a?.name).filter(Boolean).join(', ')
+                    : (currentTrack.artist || '')}
                 </Text>
               </View>
             </View>

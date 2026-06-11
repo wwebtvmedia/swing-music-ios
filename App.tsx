@@ -26,13 +26,8 @@ function FloatingPlayer() {
   useEffect(() => {
     const checkState = () => {
       if (!navigationRef.isReady()) return;
-      const state = navigationRef.getRootState();
-      if (!state) return;
-      let route = state.routes[state.index];
-      while (route && route.state && typeof route.state.index === 'number') {
-        route = (route.state.routes as any)[route.state.index];
-      }
-      setCurrentRouteName(route ? route.name : null);
+      const currentRoute = navigationRef.getCurrentRoute();
+      setCurrentRouteName(currentRoute ? currentRoute.name : null);
     };
 
     checkState();

@@ -140,6 +140,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         filepath: (activeTrack as any).filepath,
         image: (activeTrack as any).image,
         artists: (activeTrack as any).artists,
+        artist: activeTrack.artist || undefined,
         is_favorite: (activeTrack as any).is_favorite,
       } as Track)
     : null;

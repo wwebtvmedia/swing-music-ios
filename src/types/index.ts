@@ -9,6 +9,7 @@ export interface Track {
   albumartists?: TrackArtist[];
   albumhash?: string;
   artists?: TrackArtist[];
+  artist?: string;
   bitrate?: number;
   duration?: number;
   filepath?: string;

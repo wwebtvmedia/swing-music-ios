@@ -70,7 +70,9 @@ async function fetchLyrics(track?: Track | null): Promise<LyricsData> {
     console.error('Failed to load lyrics from cache', e);
   }
 
-  const artistName = track.artists?.map(a => a.name).join(', ') || '';
+  const artistName = Array.isArray(track.artists)
+    ? track.artists.map(a => a?.name).filter(Boolean).join(', ')
+    : (track.artist || '');
   const trackName = track.title || '';
   const albumName = track.album || '';
   const durationSec = track.duration || 0;

@@ -33,7 +33,9 @@ export default function BottomPlayer() {
         <View style={styles.textContainer}>
           <Text style={styles.title} numberOfLines={1}>{currentTrack.title}</Text>
           <Text style={styles.artist} numberOfLines={1}>
-            {currentTrack.artists?.map(a => a.name).join(', ') || 'Unknown Artist'}
+            {Array.isArray(currentTrack.artists)
+              ? currentTrack.artists.map(a => a?.name).filter(Boolean).join(', ')
+              : (currentTrack.artist || 'Unknown Artist')}
           </Text>
         </View>
         <TouchableOpacity style={styles.iconButton}>

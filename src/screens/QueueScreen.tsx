@@ -44,7 +44,9 @@ export default function QueueScreen() {
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={[styles.trackTitle, { color: colors.primary }]} numberOfLines={1}>{currentTrack.title}</Text>
               <Text style={styles.trackSub} numberOfLines={1}>
-                {currentTrack.artists?.map(a => a.name).join(', ') || ''}
+                {Array.isArray(currentTrack.artists)
+                  ? currentTrack.artists.map(a => a?.name).filter(Boolean).join(', ')
+                  : (currentTrack.artist || '')}
               </Text>
             </View>
             <Ionicons name="volume-high" size={18} color={colors.primary} />
@@ -74,7 +76,9 @@ export default function QueueScreen() {
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={styles.trackTitle} numberOfLines={1}>{track.title}</Text>
                   <Text style={styles.trackSub} numberOfLines={1}>
-                    {track.artists?.map(a => a.name).join(', ') || ''}
+                    {Array.isArray(track.artists)
+                      ? track.artists.map(a => a?.name).filter(Boolean).join(', ')
+                      : (track.artist || '')}
                   </Text>
                 </View>
               </TouchableOpacity>

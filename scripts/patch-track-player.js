@@ -52,5 +52,15 @@ while ((match = regex.exec(content)) !== null) {
     }
 }
 
+const musicServicePath = path.join(__dirname, '../node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt');
+if (fs.existsSync(musicServicePath)) {
+    let serviceContent = fs.readFileSync(musicServicePath, 'utf8');
+    serviceContent = serviceContent.replace(
+        "interceptPlayerActionsTriggeredExternally = true,",
+        "interceptPlayerActionsTriggeredExternally = false,"
+    );
+    fs.writeFileSync(musicServicePath, serviceContent, 'utf8');
+}
+
 fs.writeFileSync(filePath, content, 'utf8');
-console.log('react-native-track-player patched successfully for Kotlin 2.x and React Native 0.81!');
+console.log('react-native-track-player patched successfully for Kotlin 2.x, React Native 0.81, and Android 14 MediaSession stability!');

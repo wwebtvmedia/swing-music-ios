@@ -71,6 +71,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const progress = useProgress();
   const [isPlaying, setIsPlaying] = useState(false);
 
+  // Sync state explicitly to avoid the buggy useIsPlaying hook
   useEffect(() => {
     const fetchState = async () => {
       const state = await TrackPlayer.getPlaybackState();
@@ -239,6 +240,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await TrackPlayer.add(targetQueue.map(t => mapToPlayerTrack(t)));
       await TrackPlayer.skip(index);
       await TrackPlayer.play();
+      setIsPlaying(true);
       setQueueIndex(index);
     } catch (error) {
       console.error('Error playing track at index:', error);
@@ -256,6 +258,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         try {
           await TrackPlayer.skip(idx);
           await TrackPlayer.play();
+          setIsPlaying(true);
           setQueueIndex(idx);
         } catch (e) {
           // If skip fails, reset and load queue
@@ -281,19 +284,25 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const togglePlay = async () => {
-    console.log('togglePlay clicked. isPlaying:', isPlaying, 'isPlayerReady:', isPlayerReady);
     try {
-      if (isPlaying) {
+      const state = await TrackPlayer.getPlaybackState();
+      const isActuallyPlaying = state.state === State.Playing || state.state === State.Buffering;
+      
+      console.log('togglePlay clicked. isActuallyPlaying:', isActuallyPlaying, 'isPlayerReady:', isPlayerReady);
+      
+      if (isActuallyPlaying) {
         console.log('Attempting TrackPlayer.pause()');
         await TrackPlayer.pause();
         console.log('TrackPlayer.pause() completed');
+        setIsPlaying(false);
       } else {
         console.log('Attempting TrackPlayer.play()');
         await TrackPlayer.play();
         console.log('TrackPlayer.play() completed');
+        setIsPlaying(true);
       }
     } catch (e) {
-      console.error('Error toggling play state:', e);
+      console.error('togglePlay error:', e);
     }
   };
 

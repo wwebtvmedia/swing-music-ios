@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Vibration,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -28,6 +28,51 @@ const STAT_TILES = [
   { key: 'totalTracks', label: 'TRACKS', icon: 'musical-note' as const, color: '#1DB954' },
   { key: 'totalFavorites', label: 'LIKED', icon: 'heart' as const, color: '#14B8A6' },
 ];
+
+const SkeletonItem = ({ style }: { style: any }) => {
+  const opacity = useRef(new Animated.Value(0.4)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.8,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.4,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [opacity]);
+
+  return <Animated.View style={[{ backgroundColor: '#282828' }, style, { opacity }]} />;
+};
+
+function SkeletonLoader() {
+  return (
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}>
+      {/* Hero Card Skeleton */}
+      <SkeletonItem style={[styles.heroCard, { height: 130 }]} />
+
+      {/* Grid Skeleton */}
+      <View style={styles.grid}>
+        {[1, 2, 3, 4].map((i) => (
+          <View key={i} style={styles.tile}>
+            <SkeletonItem style={{ width: 36, height: 36, borderRadius: 12, marginBottom: 4 }} />
+            <SkeletonItem style={{ width: '60%', height: 22, borderRadius: 4 }} />
+            <SkeletonItem style={{ width: '40%', height: 10, borderRadius: 4 }} />
+          </View>
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
 
 export default function StatsScreen() {
   const [stats, setStats] = useState<StatsData>({
@@ -77,7 +122,13 @@ export default function StatsScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          onPress={() => {
+            Vibration.vibrate(10);
+            navigation.goBack();
+          }}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
           <Ionicons name="chevron-back" size={28} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Stats</Text>
@@ -85,7 +136,7 @@ export default function StatsScreen() {
       </View>
 
       {loading ? (
-        <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 60 }} />
+        <SkeletonLoader />
       ) : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}>
           {/* Hero card */}

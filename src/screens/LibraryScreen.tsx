@@ -1,8 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, ActivityIndicator,
-  Image, TouchableOpacity, RefreshControl, Alert, Platform, Modal, TextInput, KeyboardAvoidingView,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert, Platform, Modal, TextInput, KeyboardAvoidingView, Animated, Vibration, ActivityIndicator,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,7 +11,7 @@ import { colors } from '../theme/colors';
 import { api, getImgUrl } from '../api/client';
 import { Playlist, Track } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { usePlayer } from '../context/PlayerContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AVATAR_PALETTES = [
   ['#FB923C', '#EC4899', '#A855F7'],
@@ -25,6 +25,71 @@ const AVATAR_PALETTES = [
 function getAvatarColors(name: string): [string, string, string] {
   const idx = Math.abs(name.charCodeAt(0)) % AVATAR_PALETTES.length;
   return AVATAR_PALETTES[idx] as [string, string, string];
+}
+
+const SkeletonItem = ({ style }: { style: any }) => {
+  const opacity = useRef(new Animated.Value(0.4)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.8,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.4,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [opacity]);
+
+  return <Animated.View style={[{ backgroundColor: '#282828' }, style, { opacity }]} />;
+};
+
+function SkeletonLoader({ insets, displayName, avatarColors }: { insets: any; displayName: string; avatarColors: any }) {
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+        {/* Header Skeleton */}
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <LinearGradient colors={avatarColors} style={styles.avatar}>
+              <Text style={styles.avatarText}>{displayName[0].toUpperCase()}</Text>
+            </LinearGradient>
+            <Text style={styles.headerTitle}>Your Library</Text>
+          </View>
+          <View style={styles.headerRight}>
+            <SkeletonItem style={{ width: 22, height: 22, borderRadius: 11 }} />
+            <SkeletonItem style={{ width: 22, height: 22, borderRadius: 11, marginLeft: 16 }} />
+          </View>
+        </View>
+
+        {/* Filter Chips Skeleton */}
+        <View style={styles.chips}>
+          {[1, 2, 3].map((i) => (
+            <SkeletonItem key={i} style={{ width: 80, height: 32, borderRadius: 20 }} />
+          ))}
+        </View>
+
+        {/* List Items Skeleton */}
+        {[1, 2, 3, 4, 5, 6].map((i) => (
+          <View key={i} style={styles.listItem}>
+            <SkeletonItem style={styles.listThumb} />
+            <View style={[styles.listText, { gap: 6 }]}>
+              <SkeletonItem style={{ width: '60%', height: 16, borderRadius: 4 }} />
+              <SkeletonItem style={{ width: '30%', height: 12, borderRadius: 4 }} />
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+    </View>
+  );
 }
 
 export default function LibraryScreen() {
@@ -42,18 +107,30 @@ export default function LibraryScreen() {
 
   const fetchData = useCallback(async () => {
     try {
+      // First try to load from cache
+      const cachedPl = await AsyncStorage.getItem('library_playlists');
+      const cachedFav = await AsyncStorage.getItem('library_favorites');
+      if (cachedPl) setPlaylists(JSON.parse(cachedPl));
+      if (cachedFav) setFavorites(JSON.parse(cachedFav));
+      if (cachedPl || cachedFav) setLoading(false);
+      
       const [plRes, favRes] = await Promise.all([
         api.getAllPlaylists(),
         api.getFavoriteTracks(100),
       ]);
       const plArray = Array.isArray(plRes) ? plRes : (plRes?.data || plRes?.items || []);
       const favArray = Array.isArray(favRes) ? favRes : (favRes?.tracks || favRes?.items || []);
+      
       setPlaylists(plArray);
       setFavorites(favArray);
+      
+      // Save to cache
+      AsyncStorage.setItem('library_playlists', JSON.stringify(plArray));
+      AsyncStorage.setItem('library_favorites', JSON.stringify(favArray));
     } catch (e) {
       console.error('Library fetch error', e);
-      setPlaylists([]);
-      setFavorites([]);
+      if (playlists.length === 0) setPlaylists([]);
+      if (favorites.length === 0) setFavorites([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -79,6 +156,7 @@ export default function LibraryScreen() {
   const [selectedPlaylist, setSelectedPlaylist] = useState<any>(null);
 
   const handleCreatePlaylist = () => {
+    Vibration.vibrate(10);
     setPlaylistName('');
     setModalVisible(true);
   };
@@ -101,6 +179,7 @@ export default function LibraryScreen() {
   };
 
   const handleLongPressPlaylist = (pl: any) => {
+    Vibration.vibrate(15);
     setSelectedPlaylist(pl);
     setDeleteSheetVisible(true);
   };
@@ -122,11 +201,7 @@ export default function LibraryScreen() {
   };
 
   if (loading) {
-    return (
-      <View style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
+    return <SkeletonLoader insets={insets} displayName={displayName} avatarColors={avatarColors} />;
   }
 
   return (
@@ -138,7 +213,7 @@ export default function LibraryScreen() {
       >
         {/* ─── Header ─── */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.headerLeft} activeOpacity={0.75}>
+          <TouchableOpacity onPress={() => { Vibration.vibrate(10); navigation.navigate('Settings'); }} style={styles.headerLeft} activeOpacity={0.75}>
             <LinearGradient colors={avatarColors} style={styles.avatar}>
               <Text style={styles.avatarText}>{displayName[0].toUpperCase()}</Text>
             </LinearGradient>
@@ -161,6 +236,7 @@ export default function LibraryScreen() {
               key={f}
               style={[styles.chip, activeFilter === f && styles.chipActive]}
               onPress={() => {
+                Vibration.vibrate(10);
                 setActiveFilter(f);
                 if (f === 'Artists') navigation.navigate('Artists');
                 if (f === 'Albums') navigation.navigate('Albums');
@@ -172,7 +248,7 @@ export default function LibraryScreen() {
         </View>
 
         {/* ─── Liked Songs Card ─── */}
-        <TouchableOpacity style={styles.listItem} onPress={() => navigation.navigate('Favorites')}>
+        <TouchableOpacity style={styles.listItem} onPress={() => { Vibration.vibrate(10); navigation.navigate('Favorites'); }}>
           <LinearGradient colors={['#450E74', '#C4B2F3']} style={styles.listThumb}>
             <Ionicons name="heart" size={28} color="#fff" />
           </LinearGradient>
@@ -183,7 +259,7 @@ export default function LibraryScreen() {
         </TouchableOpacity>
 
         {/* ─── Folders Card ─── */}
-        <TouchableOpacity style={styles.listItem} onPress={() => navigation.navigate('Folders')}>
+        <TouchableOpacity style={styles.listItem} onPress={() => { Vibration.vibrate(10); navigation.navigate('Folders'); }}>
           <View style={[styles.listThumb, { backgroundColor: '#282828' }]}>
             <Ionicons name="folder-open" size={28} color={colors.primary} />
           </View>
@@ -194,7 +270,7 @@ export default function LibraryScreen() {
         </TouchableOpacity>
 
         {/* ─── History Card ─── */}
-        <TouchableOpacity style={styles.listItem} onPress={() => navigation.navigate('History')}>
+        <TouchableOpacity style={styles.listItem} onPress={() => { Vibration.vibrate(10); navigation.navigate('History'); }}>
           <View style={[styles.listThumb, { backgroundColor: '#282828' }]}>
             <Ionicons name="time" size={28} color="#A855F7" />
           </View>
@@ -205,7 +281,7 @@ export default function LibraryScreen() {
         </TouchableOpacity>
 
         {/* ─── Stats Card ─── */}
-        <TouchableOpacity style={styles.listItem} onPress={() => navigation.navigate('Stats')}>
+        <TouchableOpacity style={styles.listItem} onPress={() => { Vibration.vibrate(10); navigation.navigate('Stats'); }}>
           <View style={[styles.listThumb, { backgroundColor: '#282828' }]}>
             <Ionicons name="bar-chart" size={28} color="#FACC15" />
           </View>
@@ -220,13 +296,13 @@ export default function LibraryScreen() {
           <TouchableOpacity
             key={pl.id || i}
             style={styles.listItem}
-            onPress={() => navigation.navigate('PlaylistDetail', { playlist: pl })}
+            onPress={() => { Vibration.vibrate(10); navigation.navigate('PlaylistDetail', { playlist: pl }); }}
             onLongPress={() => handleLongPressPlaylist(pl)}
             delayLongPress={400}
           >
             <View style={[styles.listThumb, { overflow: 'hidden' }]}>
               {(pl.image || pl.thumb) ? (
-                <Image source={{ uri: playlistImg(pl.image || pl.thumb) }} style={{ width: 64, height: 64 }} />
+                <Image source={{ uri: playlistImg(pl.image || pl.thumb) }} style={{ width: 64, height: 64 }} transition={150} />
               ) : (
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#282828' }}>
                   <Ionicons name="musical-notes" size={24} color={colors.primary} />
@@ -258,7 +334,7 @@ export default function LibraryScreen() {
               <View style={styles.sheetHeader}>
                 <View style={[styles.sheetThumb, { overflow: 'hidden' }]}>
                   {(selectedPlaylist.image || selectedPlaylist.thumb) ? (
-                    <Image source={{ uri: playlistImg(selectedPlaylist.image || selectedPlaylist.thumb) }} style={{ width: 48, height: 48 }} />
+                    <Image source={{ uri: playlistImg(selectedPlaylist.image || selectedPlaylist.thumb) }} style={{ width: 48, height: 48 }} transition={150} />
                   ) : (
                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#282828' }}>
                       <Ionicons name="musical-notes" size={22} color={colors.primary} />

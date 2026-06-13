@@ -14,6 +14,7 @@ import { colors } from './src/theme/colors';
 import { useState, useEffect } from 'react';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SkeletonLoader } from './src/screens/HomeScreen';
 
 const TAB_BAR_HEIGHT = 49;
 export const navigationRef = createNavigationContainerRef<any>();
@@ -63,13 +64,10 @@ function FloatingPlayer() {
 
 function NavigationWrapper() {
   const { accessToken, isLoading } = useAuth();
+  const insets = useSafeAreaInsets();
 
   if (isLoading) {
-    return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
+    return <SkeletonLoader insets={insets} />;
   }
 
   return (

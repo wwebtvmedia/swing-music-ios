@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, ActivityIndicator,
-  Image, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Vibration,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,11 +13,73 @@ import { Track } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
 
+const SkeletonItem = ({ style }: { style: any }) => {
+  const opacity = useRef(new Animated.Value(0.4)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.8,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.4,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [opacity]);
+
+  return <Animated.View style={[{ backgroundColor: '#282828' }, style, { opacity }]} />;
+};
+
+function SkeletonLoader({ insets }: { insets: any }) {
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+        {/* Header Skeleton */}
+        <View style={styles.gradientHeader}>
+          <SkeletonItem style={{ width: 40, height: 28, borderRadius: 4, marginBottom: 16 }} />
+          <View style={styles.artRow}>
+            <SkeletonItem style={{ width: 100, height: 100, borderRadius: 4 }} />
+            <View style={[styles.artInfo, { gap: 8 }]}>
+              <SkeletonItem style={{ width: 120, height: 24, borderRadius: 4 }} />
+              <SkeletonItem style={{ width: 60, height: 14, borderRadius: 4 }} />
+            </View>
+          </View>
+          <View style={styles.actionRow}>
+            <SkeletonItem style={{ width: 120, height: 24, borderRadius: 4 }} />
+            <SkeletonItem style={{ width: 56, height: 56, borderRadius: 28 }} />
+          </View>
+        </View>
+
+        {/* Tracks List Skeleton */}
+        {[1, 2, 3, 4, 5].map((n) => (
+          <View key={n} style={styles.trackRow}>
+            <View style={styles.trackLeft}>
+              <SkeletonItem style={{ width: 48, height: 48, borderRadius: 4 }} />
+              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                <SkeletonItem style={{ width: '60%', height: 14, borderRadius: 4 }} />
+                <SkeletonItem style={{ width: '40%', height: 12, borderRadius: 4 }} />
+              </View>
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
 export default function FavoritesScreen() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
   const { baseUrl } = useAuth();
-  const { playTrack } = usePlayer();
+  const { playTrack, shuffleMode, toggleShuffle } = usePlayer();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
 
@@ -31,22 +93,25 @@ export default function FavoritesScreen() {
   const thumb = (path?: string) => getImgUrl(baseUrl, path, 'medium');
 
   const handlePlay = async (track: Track, idx: number) => {
+    Vibration.vibrate(12);
     await playTrack(track, tracks);
     navigation.navigate('Player');
   };
 
   const handlePlayAll = async () => {
     if (tracks.length === 0) return;
-    await playTrack(tracks[0], tracks);
+    Vibration.vibrate(15);
+    let firstTrack = tracks[0];
+    if (shuffleMode) {
+      const randomIdx = Math.floor(Math.random() * tracks.length);
+      firstTrack = tracks[randomIdx];
+    }
+    await playTrack(firstTrack, tracks);
     navigation.navigate('Player');
   };
 
   if (loading) {
-    return (
-      <View style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
+    return <SkeletonLoader insets={insets} />;
   }
 
   return (
@@ -54,7 +119,7 @@ export default function FavoritesScreen() {
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
         {/* ─── Gradient Header ─── */}
         <LinearGradient colors={['rgba(69,14,116,0.85)', colors.background]} style={styles.gradientHeader}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginBottom: 16 }}>
+          <TouchableOpacity onPress={() => { Vibration.vibrate(10); navigation.goBack(); }} style={{ marginBottom: 16 }}>
             <Ionicons name="chevron-back" size={28} color="#fff" />
           </TouchableOpacity>
 
@@ -72,9 +137,19 @@ export default function FavoritesScreen() {
             <View style={{ flexDirection: 'row', gap: 16 }}>
               <Ionicons name="arrow-down-circle-outline" size={28} color="#aaa" />
             </View>
-            <TouchableOpacity style={styles.playBtn} onPress={handlePlayAll}>
-              <Ionicons name="play" size={28} color="#000" />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 24 }}>
+              <TouchableOpacity
+                style={styles.actionIconBtn}
+                onPress={toggleShuffle}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Ionicons name="shuffle" size={26} color={shuffleMode ? colors.primary : '#b3b3b3'} />
+                {shuffleMode && <View style={styles.activeDot} />}
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.playBtn} onPress={handlePlayAll}>
+                <Ionicons name="play" size={28} color="#000" />
+              </TouchableOpacity>
+            </View>
           </View>
         </LinearGradient>
 
@@ -83,7 +158,7 @@ export default function FavoritesScreen() {
           <TouchableOpacity key={track.trackhash || i} style={styles.trackRow} onPress={() => handlePlay(track, i)}>
             <View style={styles.trackLeft}>
               {track.image ? (
-                <Image source={{ uri: thumb(track.image) }} style={styles.trackThumb} />
+                <Image source={{ uri: thumb(track.image) }} style={styles.trackThumb} transition={150} />
               ) : (
                 <View style={[styles.trackThumb, { backgroundColor: '#282828', justifyContent: 'center', alignItems: 'center' }]}>
                   <Ionicons name="musical-note" size={18} color="#535353" />
@@ -123,6 +198,8 @@ const styles = StyleSheet.create({
   artTitle: { color: '#fff', fontSize: 24, fontWeight: 'bold' },
   artSub: { color: '#b3b3b3', fontSize: 13, marginTop: 4 },
   actionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  actionIconBtn: { alignItems: 'center', justifyContent: 'center', width: 40, height: 40 },
+  activeDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.primary, marginTop: 4 },
   playBtn: {
     width: 56, height: 56, borderRadius: 28,
     backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center',

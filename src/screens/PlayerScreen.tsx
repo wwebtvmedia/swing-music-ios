@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Modal, Platform, ScrollView, Alert, ActivityIndicator,
+  View, Text, StyleSheet, TouchableOpacity, Dimensions, Modal, Platform, ScrollView, Alert, ActivityIndicator, Vibration, Animated, PanResponder,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +22,60 @@ const formatMs = (ms: number) => {
   return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 };
 
+const GRADIENT_COLORS = [
+  ['#4C4C4C', '#121212'],
+  ['#1D3557', '#121212'],
+  ['#2A9D8F', '#121212'],
+  ['#E76F51', '#121212'],
+  ['#264653', '#121212'],
+  ['#D62828', '#121212'],
+  ['#8338EC', '#121212'],
+  ['#0077B6', '#121212'],
+  ['#0096C7', '#121212'],
+  ['#7B2CBF', '#121212'],
+  ['#9D4EDD', '#121212'],
+  ['#C77DFF', '#121212'],
+  ['#E63946', '#121212'],
+  ['#F77F00', '#121212'],
+  ['#FCBF49', '#121212'],
+  ['#E07A5F', '#121212'],
+];
+
+function getDynamicGradientColors(hash?: string): [string, string] {
+  if (!hash) return ['#4C4C4C', '#121212'];
+  let sum = 0;
+  for (let i = 0; i < hash.length; i++) {
+    sum += hash.charCodeAt(i);
+  }
+  const idx = sum % GRADIENT_COLORS.length;
+  return GRADIENT_COLORS[idx] as [string, string];
+}
+
+const SkeletonItem = ({ style }: { style: any }) => {
+  const opacity = useRef(new Animated.Value(0.4)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.8,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.4,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [opacity]);
+
+  return <Animated.View style={[{ backgroundColor: '#282828' }, style, { opacity }]} />;
+};
+
 export default function PlayerScreen() {
   const {
     currentTrack, isPlaying, togglePlay,
@@ -30,14 +85,183 @@ export default function PlayerScreen() {
     toggleRepeat, toggleShuffle,
     queue, queueIndex,
     toggleTrackFavorite,
+    sleepTimerMinutesLeft, setSleepTimer,
+    volume, setVolume,
   } = usePlayer();
   const { baseUrl } = useAuth();
   const navigation = useNavigation<any>();
 
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [playlistsVisible, setPlaylistsVisible] = useState(false);
+  const [sleepTimerVisible, setSleepTimerVisible] = useState(false);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
+  const [slidingValue, setSlidingValue] = useState<number | null>(null);
+
+  const [optimisticTrack, setOptimisticTrack] = useState<any>(null);
+  const swipeX = useRef(new Animated.Value(0)).current;
+  const swipeOpacity = useRef(new Animated.Value(1)).current;
+  const [dragDirection, setDragDirection] = useState<'left' | 'right' | null>(null);
+  const dragDirectionRef = useRef<'left' | 'right' | null>(null);
+  const slidingUpdateRef = useRef(0);
+
+  const handleSliding = (val: number) => {
+    const now = Date.now();
+    if (now - slidingUpdateRef.current > 60) {
+      setSlidingValue(val);
+      slidingUpdateRef.current = now;
+    }
+  };
+
+  // Update dynamic state reference to prevent stale closures inside PanResponder
+  const stateRef = useRef<any>({});
+  useEffect(() => {
+    stateRef.current = {
+      currentTrack,
+      queue,
+      queueIndex,
+      dragDirection,
+      playNext,
+      playPrev,
+      handleNextWithAnim,
+      handlePrevWithAnim,
+    };
+  });
+
+  useEffect(() => {
+    const id = swipeX.addListener((value) => {
+      let nextDir: 'left' | 'right' | null = null;
+      if (value.value < -15) {
+        nextDir = 'left';
+      } else if (value.value > 15) {
+        nextDir = 'right';
+      }
+      if (dragDirectionRef.current !== nextDir) {
+        dragDirectionRef.current = nextDir;
+        setDragDirection(nextDir);
+      }
+    });
+    return () => {
+      swipeX.removeListener(id);
+    };
+  }, []);
+
+  const handleNextWithAnim = () => {
+    const activeTrack = stateRef.current.currentTrack;
+    const activeQueue = stateRef.current.queue;
+    const activeIndex = stateRef.current.queueIndex;
+
+    let nextTrack = null;
+    if (activeQueue && activeQueue.length > 0) {
+      const idx = activeQueue.findIndex((t: any) => t.trackhash === activeTrack?.trackhash);
+      const activeIdx = idx >= 0 ? idx : activeIndex;
+      const nextIdx = (activeIdx + 1) % activeQueue.length;
+      nextTrack = activeQueue[nextIdx];
+    }
+
+    Animated.parallel([
+      Animated.timing(swipeX, {
+        toValue: -W - 100,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(swipeOpacity, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      })
+    ]).start(() => {
+      if (nextTrack) setOptimisticTrack(nextTrack);
+      stateRef.current.playNext();
+    });
+  };
+
+  const handlePrevWithAnim = () => {
+    const activeTrack = stateRef.current.currentTrack;
+    const activeQueue = stateRef.current.queue;
+    const activeIndex = stateRef.current.queueIndex;
+
+    let prevTrack = null;
+    if (activeQueue && activeQueue.length > 0) {
+      const idx = activeQueue.findIndex((t: any) => t.trackhash === activeTrack?.trackhash);
+      const activeIdx = idx >= 0 ? idx : activeIndex;
+      const prevIdx = (activeIdx - 1 + activeQueue.length) % activeQueue.length;
+      prevTrack = activeQueue[prevIdx];
+    }
+
+    Animated.parallel([
+      Animated.timing(swipeX, {
+        toValue: W + 100,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(swipeOpacity, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      })
+    ]).start(() => {
+      if (prevTrack) setOptimisticTrack(prevTrack);
+      stateRef.current.playPrev(true);
+    });
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dy) < 30;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        swipeX.setValue(gestureState.dx);
+        const opacity = Math.max(0.6, 1 - Math.abs(gestureState.dx) / 400);
+        swipeOpacity.setValue(opacity);
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        const threshold = 100;
+        if (gestureState.dx < -threshold) {
+          Vibration.vibrate(12);
+          stateRef.current.handleNextWithAnim();
+        } else if (gestureState.dx > threshold) {
+          Vibration.vibrate(12);
+          stateRef.current.handlePrevWithAnim();
+        } else {
+          Animated.parallel([
+            Animated.spring(swipeX, {
+              toValue: 0,
+              tension: 50,
+              friction: 7,
+              useNativeDriver: true,
+            }),
+            Animated.timing(swipeOpacity, {
+              toValue: 1,
+              duration: 200,
+              useNativeDriver: true,
+            })
+          ]).start();
+        }
+      },
+    })
+  ).current;
+
+  const prevTrackHash = useRef(currentTrack?.trackhash);
+  useEffect(() => {
+    if (prevTrackHash.current !== currentTrack?.trackhash) {
+      prevTrackHash.current = currentTrack?.trackhash;
+      setOptimisticTrack(null);
+      swipeX.setValue(0);
+      swipeOpacity.setValue(1);
+      dragDirectionRef.current = null;
+      setDragDirection(null);
+    }
+  }, [currentTrack]);
+
+  useEffect(() => {
+    if (optimisticTrack) {
+      swipeX.setValue(0);
+      swipeOpacity.setValue(1);
+    }
+  }, [optimisticTrack]);
 
   const fetchPlaylists = async () => {
     setLoadingPlaylists(true);
@@ -91,23 +315,111 @@ export default function PlayerScreen() {
 
   if (!currentTrack) {
     return (
-      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={colors.primary || '#1DB954'} />
-        <Text style={{ color: '#b3b3b3', marginTop: 16, fontSize: 14, fontWeight: '600' }}>
-          Loading track...
-        </Text>
-      </SafeAreaView>
+      <View style={{ flex: 1, backgroundColor: '#121212' }}>
+        <LinearGradient colors={['#333333', '#121212']} style={StyleSheet.absoluteFill} />
+        <SafeAreaView style={styles.container}>
+          <View style={styles.topBar}>
+            <TouchableOpacity onPress={() => { Vibration.vibrate(10); navigation.goBack(); }} style={{ padding: 6 }}>
+              <Ionicons name="chevron-down" size={28} color="#fff" />
+            </TouchableOpacity>
+            <View style={{ alignItems: 'center', gap: 4 }}>
+              <Text style={styles.topBarSub}>PLAYING FROM LIBRARY</Text>
+              <SkeletonItem style={{ width: 80, height: 12, borderRadius: 4 }} />
+            </View>
+            <View style={{ width: 40 }} />
+          </View>
+
+          <View style={styles.artWrapper}>
+            <View style={styles.artContainer}>
+              <SkeletonItem style={styles.art} />
+            </View>
+          </View>
+
+          <View style={styles.bottomSection}>
+            <View style={styles.infoRow}>
+              <View style={{ flex: 1, gap: 6 }}>
+                <SkeletonItem style={{ width: '60%', height: 22, borderRadius: 4 }} />
+                <SkeletonItem style={{ width: '40%', height: 16, borderRadius: 4 }} />
+              </View>
+              <Ionicons name="heart-outline" size={26} color="#535353" />
+            </View>
+
+            <View style={styles.seekContainer}>
+              <SkeletonItem style={{ width: '100%', height: 4, borderRadius: 2, marginVertical: 14 }} />
+              <View style={styles.timeRow}>
+                <Text style={styles.time}>0:00</Text>
+                <Text style={styles.time}>0:00</Text>
+              </View>
+            </View>
+
+            <View style={styles.controls}>
+              <Ionicons name="shuffle" size={24} color="#535353" />
+              <Ionicons name="play-skip-back" size={28} color="#535353" />
+              <View style={styles.playBtn}>
+                <Ionicons name="play" size={30} color="#121212" />
+              </View>
+              <Ionicons name="play-skip-forward" size={28} color="#535353" />
+              <Ionicons name="repeat" size={24} color="#535353" />
+            </View>
+
+            <View style={styles.extras}>
+              <Ionicons name="musical-notes-outline" size={22} color="#535353" />
+              <Ionicons name="timer-outline" size={22} color="#535353" />
+              <Ionicons name="menu-outline" size={24} color="#535353" />
+            </View>
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
   const progress = duration > 0 ? position / duration : 0;
-  const imageUrl = getImgUrl(baseUrl, currentTrack.image, 'large');
+  const displayProgress = slidingValue !== null ? slidingValue : (isNaN(progress) ? 0 : progress);
+  const displayPosition = slidingValue !== null ? Math.floor(slidingValue * duration) : position;
+
+  const trackToUse = optimisticTrack || currentTrack;
+  const imageUrl = trackToUse ? getImgUrl(baseUrl, trackToUse.image, 'large') : null;
+
+  const rotate = swipeX.interpolate({
+    inputRange: [-W, 0, W],
+    outputRange: ['-12deg', '0deg', '12deg'],
+    extrapolate: 'clamp',
+  });
+
+  const nextScale = swipeX.interpolate({
+    inputRange: [-W, 0, W],
+    outputRange: [1, 0.9, 1],
+    extrapolate: 'clamp',
+  });
+
+  const nextOpacity = swipeX.interpolate({
+    inputRange: [-W, 0, W],
+    outputRange: [1, 0.6, 1],
+    extrapolate: 'clamp',
+  });
+
+  let bottomTrack = null;
+  if (queue && queue.length > 0) {
+    const idx = queue.findIndex(t => t.trackhash === currentTrack?.trackhash);
+    const activeIdx = idx >= 0 ? idx : queueIndex;
+    if (dragDirection === 'right') {
+      const prevIdx = (activeIdx - 1 + queue.length) % queue.length;
+      bottomTrack = queue[prevIdx];
+    } else {
+      const nextIdx = (activeIdx + 1) % queue.length;
+      bottomTrack = queue[nextIdx];
+    }
+  }
+  const bottomImageUrl = bottomTrack ? getImgUrl(baseUrl, bottomTrack.image, 'large') : null;
 
   const repeatColor = repeatMode !== 'off' ? colors.primary : '#b3b3b3';
   const shuffleColor = shuffleMode ? colors.primary : '#b3b3b3';
+  const gradientColors = getDynamicGradientColors(trackToUse?.trackhash);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
+      <LinearGradient colors={gradientColors} style={StyleSheet.absoluteFill} />
+      <SafeAreaView style={{ flex: 1 }}>
       {/* ─── Top Bar ─── */}
       <View style={styles.topBar}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -116,7 +428,7 @@ export default function PlayerScreen() {
         <View style={{ alignItems: 'center' }}>
           <Text style={styles.topBarSub}>NOW PLAYING</Text>
           <Text style={styles.topBarTitle} numberOfLines={1}>
-            {currentTrack.album || 'Swing Music'}
+            {trackToUse?.album || 'Swing Music'}
           </Text>
         </View>
         <TouchableOpacity onPress={() => setOptionsVisible(true)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -125,16 +437,63 @@ export default function PlayerScreen() {
       </View>
 
       <View style={styles.mainContent}>
-        {/* ─── Album Art ─── */}
+        {/* ─── Album Art with Swipe Gestures ─── */}
         <View style={styles.artWrapper}>
-          <View style={styles.artContainer}>
-            {imageUrl ? (
-              <Image source={{ uri: imageUrl }} style={styles.art} resizeMode="cover" />
-            ) : (
-              <View style={[styles.art, styles.artFallback]}>
-                <Ionicons name="musical-notes" size={80} color="#535353" />
-              </View>
+          <View style={{ width: W - 72, height: W - 72, position: 'relative', justifyContent: 'center', alignItems: 'center' }}>
+            {/* Bottom Card */}
+            {bottomImageUrl && (
+              <Animated.View
+                style={[
+                  styles.artContainer,
+                  {
+                    position: 'absolute',
+                    width: W - 72,
+                    height: W - 72,
+                    transform: [{ scale: nextScale }],
+                    opacity: nextOpacity,
+                    zIndex: 1,
+                  }
+                ]}
+              >
+                <Image
+                  source={{ uri: bottomImageUrl }}
+                  style={styles.art}
+                  contentFit="cover"
+                />
+              </Animated.View>
             )}
+
+            {/* Top Card */}
+            <Animated.View
+              {...panResponder.panHandlers}
+              style={[
+                styles.artContainer,
+                {
+                  position: 'absolute',
+                  width: W - 72,
+                  height: W - 72,
+                  transform: [
+                    { translateX: swipeX },
+                    { rotate: rotate },
+                  ],
+                  opacity: swipeOpacity,
+                  zIndex: 2,
+                }
+              ]}
+            >
+              {imageUrl ? (
+                <Image
+                  source={{ uri: imageUrl }}
+                  style={styles.art}
+                  contentFit="cover"
+                  transition={200}
+                />
+              ) : (
+                <View style={[styles.art, styles.artFallback]}>
+                  <Ionicons name="musical-notes" size={80} color="#535353" />
+                </View>
+              )}
+            </Animated.View>
           </View>
         </View>
 
@@ -143,36 +502,50 @@ export default function PlayerScreen() {
           {/* ─── Track Info + Heart ─── */}
           <View style={styles.infoRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.trackTitle} numberOfLines={1}>{currentTrack.title}</Text>
+              <Text style={styles.trackTitle} numberOfLines={1}>{trackToUse?.title}</Text>
               <Text style={styles.trackArtist} numberOfLines={1}>
-                {Array.isArray(currentTrack.artists)
-                  ? currentTrack.artists.map(a => a?.name).filter(Boolean).join(', ')
-                  : (currentTrack.artist || currentTrack.album || '')}
+                {Array.isArray(trackToUse?.artists)
+                  ? trackToUse.artists.map((a: any) => a?.name).filter(Boolean).join(', ')
+                  : (trackToUse?.artist || trackToUse?.album || '')}
               </Text>
             </View>
-            <TouchableOpacity onPress={toggleTrackFavorite} style={{ padding: 8 }}>
+            <TouchableOpacity
+              onPress={() => {
+                Vibration.vibrate(12);
+                toggleTrackFavorite();
+              }}
+              style={{ padding: 8 }}
+            >
               <Ionicons
-                name={currentTrack.is_favorite ? 'heart' : 'heart-outline'}
+                name={trackToUse?.is_favorite ? 'heart' : 'heart-outline'}
                 size={26}
-                color={currentTrack.is_favorite ? colors.primary : '#b3b3b3'}
+                color={trackToUse?.is_favorite ? colors.primary : '#b3b3b3'}
               />
             </TouchableOpacity>
           </View>
 
-          {/* ─── Seekbar ─── */}
           <View style={styles.seekContainer}>
             <Slider
               style={styles.slider}
               minimumValue={0}
               maximumValue={1}
-              value={isNaN(progress) ? 0 : progress}
+              value={displayProgress}
               minimumTrackTintColor="#fff"
               maximumTrackTintColor="#535353"
               thumbTintColor="#fff"
-              onSlidingComplete={(val) => seekTo(val)}
+              onValueChange={handleSliding}
+              onSlidingStart={(val) => {
+                setSlidingValue(val);
+              }}
+              onSlidingComplete={async (val) => {
+                await seekTo(val);
+                setTimeout(() => {
+                  setSlidingValue(null);
+                }, 1000);
+              }}
             />
             <View style={styles.timeRow}>
-              <Text style={styles.time}>{formatMs(position)}</Text>
+              <Text style={styles.time}>{formatMs(displayPosition)}</Text>
               <Text style={styles.time}>{formatMs(duration)}</Text>
             </View>
           </View>
@@ -184,24 +557,47 @@ export default function PlayerScreen() {
               {shuffleMode && <View style={styles.activeDot} />}
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={playPrev} style={styles.ctrlBtn}>
+            <TouchableOpacity
+              onPress={() => {
+                Vibration.vibrate(12);
+                handlePrevWithAnim();
+              }}
+              style={styles.ctrlBtn}
+            >
               <Ionicons name="play-skip-back" size={32} color="#fff" />
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={togglePlay} style={styles.playBtn}>
+            <TouchableOpacity
+              onPress={() => {
+                Vibration.vibrate(12);
+                togglePlay();
+              }}
+              style={styles.playBtn}
+            >
               <Ionicons name={isPlaying ? 'pause' : 'play'} size={36} color="#000" />
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={playNext} style={styles.ctrlBtn}>
+            <TouchableOpacity
+              onPress={() => {
+                Vibration.vibrate(12);
+                handleNextWithAnim();
+              }}
+              style={styles.ctrlBtn}
+            >
               <Ionicons name="play-skip-forward" size={32} color="#fff" />
             </TouchableOpacity>
 
             <TouchableOpacity onPress={toggleRepeat} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Ionicons
-                name={repeatMode === 'one' ? 'repeat' : 'repeat'}
+                name="repeat"
                 size={24}
                 color={repeatColor}
               />
+              {repeatMode === 'one' && (
+                <View style={styles.repeatOneBadge}>
+                  <Text style={styles.repeatOneText}>1</Text>
+                </View>
+              )}
               {repeatMode !== 'off' && <View style={[styles.activeDot, { backgroundColor: repeatColor }]} />}
             </TouchableOpacity>
           </View>
@@ -214,12 +610,41 @@ export default function PlayerScreen() {
             >
               <Ionicons name="text" size={22} color="#b3b3b3" />
             </TouchableOpacity>
+
+            {sleepTimerMinutesLeft !== null && (
+              <TouchableOpacity
+                onPress={() => setSleepTimerVisible(true)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+              >
+                <Ionicons name="time-outline" size={16} color={colors.primary} />
+                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: 'bold' }}>
+                  {sleepTimerMinutesLeft}m
+                </Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
               onPress={() => navigation.navigate('Queue')}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Ionicons name="list" size={22} color="#b3b3b3" />
             </TouchableOpacity>
+          </View>
+
+          {/* ─── Volume Control ─── */}
+          <View style={styles.volumeContainer}>
+            <Ionicons name="volume-low" size={18} color="#b3b3b3" />
+            <Slider
+              style={styles.volumeSlider}
+              minimumValue={0}
+              maximumValue={1}
+              value={volume}
+              minimumTrackTintColor="#fff"
+              maximumTrackTintColor="rgba(255,255,255,0.2)"
+              thumbTintColor="#fff"
+              onValueChange={setVolume}
+            />
+            <Ionicons name="volume-high" size={18} color="#b3b3b3" />
           </View>
         </View>
       </View>
@@ -284,10 +709,76 @@ export default function PlayerScreen() {
                 <Ionicons name="add-circle-outline" size={22} color="#fff" />
                 <Text style={styles.menuRowText}>Add to playlist</Text>
               </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuRow}
+                onPress={() => {
+                  setOptionsVisible(false);
+                  setSleepTimerVisible(true);
+                }}
+              >
+                <Ionicons name="time" size={22} color="#fff" />
+                <Text style={styles.menuRowText}>Sleep Timer</Text>
+              </TouchableOpacity>
             </ScrollView>
 
             <TouchableOpacity style={styles.menuCloseBtn} onPress={() => setOptionsVisible(false)}>
               <Text style={styles.menuCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ─── Sleep Timer Selection Modal ─── */}
+      <Modal
+        visible={sleepTimerVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setSleepTimerVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.menuOverlay}
+          activeOpacity={1}
+          onPress={() => setSleepTimerVisible(false)}
+        >
+          <View style={styles.menuContainer}>
+            <View style={styles.playlistSelectorHeader}>
+              <Text style={styles.playlistSelectorTitle}>Sleep Timer</Text>
+            </View>
+
+            <View style={styles.menuDivider} />
+
+            <ScrollView style={styles.playlistListScroll}>
+              {sleepTimerMinutesLeft !== null && (
+                <TouchableOpacity
+                  style={styles.playlistSelectRow}
+                  onPress={() => {
+                    setSleepTimer(null);
+                    setSleepTimerVisible(false);
+                  }}
+                >
+                  <Ionicons name="stop-circle" size={20} color="#ff4444" />
+                  <Text style={[styles.playlistSelectText, { color: '#ff4444' }]}>Turn off timer</Text>
+                </TouchableOpacity>
+              )}
+
+              {[5, 10, 15, 30, 45, 60].map((mins) => (
+                <TouchableOpacity
+                  key={mins}
+                  style={styles.playlistSelectRow}
+                  onPress={() => {
+                    setSleepTimer(mins);
+                    setSleepTimerVisible(false);
+                  }}
+                >
+                  <Ionicons name="time-outline" size={20} color="#b3b3b3" />
+                  <Text style={styles.playlistSelectText}>{mins} minutes</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity style={styles.menuCloseBtn} onPress={() => setSleepTimerVisible(false)}>
+              <Text style={styles.menuCloseText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -344,12 +835,13 @@ export default function PlayerScreen() {
           <Text style={styles.toastText}>{toastMessage}</Text>
         </View>
       )}
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212' },
+  container: { flex: 1, backgroundColor: 'transparent' },
   mainContent: { flex: 1, justifyContent: 'space-between' },
   artWrapper: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   bottomSection: { width: '100%', paddingBottom: Platform.OS === 'ios' ? 16 : 24 },
@@ -399,6 +891,15 @@ const styles = StyleSheet.create({
     width: 4, height: 4, borderRadius: 2,
     backgroundColor: colors.primary,
     alignSelf: 'center', marginTop: 3,
+    position: 'absolute', bottom: -6,
+  },
+  repeatOneBadge: {
+    position: 'absolute', top: -4, right: -4,
+    backgroundColor: colors.background, borderRadius: 8,
+    width: 14, height: 14, justifyContent: 'center', alignItems: 'center',
+  },
+  repeatOneText: {
+    color: colors.primary, fontSize: 10, fontWeight: 'bold',
   },
 
   extras: {
@@ -406,6 +907,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 36,
     marginTop: 4,
+    marginBottom: 8,
+  },
+
+  volumeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 36,
+    gap: 12,
+    marginTop: 8,
+  },
+  volumeSlider: {
+    flex: 1,
+    height: 30,
   },
 
   // Menu / Bottom Sheet styles

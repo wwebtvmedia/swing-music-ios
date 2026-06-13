@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TextInput, ScrollView, ActivityIndicator,
-  Image, TouchableOpacity, FlatList,
+  View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Animated, FlatList, Vibration,
 } from 'react-native';
+import { Image } from 'expo-image';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -43,11 +44,65 @@ interface SearchResults {
   artists: Artist[];
 }
 
+const SkeletonItem = ({ style }: { style: any }) => {
+  const opacity = useRef(new Animated.Value(0.4)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.8,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.4,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [opacity]);
+
+  return <Animated.View style={[{ backgroundColor: '#282828' }, style, { opacity }]} />;
+};
+
+function SkeletonLoader() {
+  return (
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 20 }} showsVerticalScrollIndicator={false}>
+      <SkeletonItem style={{ width: 120, height: 22, marginBottom: 16, borderRadius: 4 }} />
+      {[1, 2, 3].map((n) => (
+        <View key={n} style={styles.skeletonRow}>
+          <SkeletonItem style={{ width: 52, height: 52, borderRadius: 4 }} />
+          <View style={{ flex: 1, marginLeft: 12, gap: 8 }}>
+            <SkeletonItem style={{ width: '60%', height: 16, borderRadius: 4 }} />
+            <SkeletonItem style={{ width: '40%', height: 12, borderRadius: 4 }} />
+          </View>
+        </View>
+      ))}
+
+      <SkeletonItem style={{ width: 100, height: 22, marginTop: 32, marginBottom: 16, borderRadius: 4 }} />
+      <View style={{ flexDirection: 'row', gap: 16 }}>
+        {[1, 2].map((n) => (
+          <View key={n} style={{ width: 140, gap: 8 }}>
+            <SkeletonItem style={{ width: 140, height: 140, borderRadius: 4 }} />
+            <SkeletonItem style={{ width: '80%', height: 14, borderRadius: 4 }} />
+            <SkeletonItem style={{ width: '50%', height: 10, borderRadius: 4 }} />
+          </View>
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
+
 export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResults>({ tracks: [], albums: [], artists: [] });
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const { baseUrl, username } = useAuth();
   const { playTrack } = usePlayer();
   const navigation = useNavigation<any>();
@@ -57,6 +112,44 @@ export default function SearchScreen() {
   const avatarColors = getAvatarColors(displayName);
 
   const thumb = (path?: string) => getImgUrl(baseUrl, path, 'medium');
+
+  useEffect(() => {
+    AsyncStorage.getItem('recentSearches').then((raw) => {
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            setRecentSearches(parsed);
+          }
+        } catch {}
+      }
+    });
+  }, []);
+
+  const saveSearchQuery = useCallback((q: string) => {
+    const trimmed = q.trim();
+    if (!trimmed) return;
+    setRecentSearches((prev) => {
+      const next = [trimmed, ...prev.filter((s) => s !== trimmed)].slice(0, 5);
+      AsyncStorage.setItem('recentSearches', JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const clearRecentSearches = async () => {
+    Vibration.vibrate(10);
+    setRecentSearches([]);
+    await AsyncStorage.removeItem('recentSearches').catch(() => {});
+  };
+
+  const removeSearchQuery = (q: string) => {
+    Vibration.vibrate(8);
+    setRecentSearches((prev) => {
+      const next = prev.filter((s) => s !== q);
+      AsyncStorage.setItem('recentSearches', JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
 
   const runSearch = useCallback(async (q: string) => {
     if (!q.trim()) { setResults({ tracks: [], albums: [], artists: [] }); return; }
@@ -73,26 +166,22 @@ export default function SearchScreen() {
         artists: artistRes.artists || artistRes.items || [],
       });
       setHasSearched(true);
+      saveSearchQuery(q);
     } catch (e) {
       console.error('Search error', e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [saveSearchQuery]);
 
   const handleClear = () => {
+    Vibration.vibrate(10);
     setQuery('');
     setResults({ tracks: [], albums: [], artists: [] });
     setHasSearched(false);
   };
 
-  const handleCategoryPress = (catLabel: string) => {
-    setQuery(catLabel);
-    runSearch(catLabel);
-  };
-
   useEffect(() => {
-    // Only debounce search if it wasn't triggered immediately (e.g. user typing)
     const t = setTimeout(() => {
       if (query.trim()) {
         runSearch(query);
@@ -102,6 +191,7 @@ export default function SearchScreen() {
   }, [query, runSearch]);
 
   const handlePlayTrack = async (track: Track) => {
+    Vibration.vibrate(12);
     await playTrack(track, results.tracks);
     navigation.navigate('Player');
   };
@@ -113,7 +203,7 @@ export default function SearchScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* ─── Header ─── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
+        <TouchableOpacity onPress={() => { Vibration.vibrate(10); navigation.navigate('Settings'); }}>
           <LinearGradient colors={avatarColors} style={styles.avatar}>
             <Text style={styles.avatarText}>{displayName[0]?.toUpperCase() || 'S'}</Text>
           </LinearGradient>
@@ -146,7 +236,7 @@ export default function SearchScreen() {
 
       {/* ─── Content ─── */}
       {loading ? (
-        <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 60 }} />
+        <SkeletonLoader />
       ) : noResults ? (
         <View style={styles.noResults}>
           <Ionicons name="search-outline" size={64} color="#535353" />
@@ -156,7 +246,41 @@ export default function SearchScreen() {
       ) : !query.trim() ? (
         /* ─── Browse All grid ─── */
         <ScrollView contentContainerStyle={styles.browseGrid} showsVerticalScrollIndicator={false}>
-          <Text style={styles.browseTitle}>Browse all</Text>
+          {recentSearches.length > 0 && (
+            <View style={styles.recentContainer}>
+              <View style={styles.recentHeader}>
+                <Text style={styles.recentTitle}>Recent searches</Text>
+                <TouchableOpacity onPress={clearRecentSearches}>
+                  <Text style={styles.clearAllBtn}>Clear all</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.recentList}>
+                {recentSearches.map((item, idx) => (
+                  <View key={idx} style={styles.recentRow}>
+                    <TouchableOpacity
+                      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+                      onPress={() => {
+                        setQuery(item);
+                        runSearch(item);
+                      }}
+                    >
+                      <Ionicons name="time-outline" size={18} color="#b3b3b3" />
+                      <Text style={styles.recentText} numberOfLines={1}>{item}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => removeSearchQuery(item)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={{ padding: 4 }}
+                    >
+                      <Ionicons name="close" size={16} color="#b3b3b3" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          <Text style={[styles.browseTitle, recentSearches.length > 0 && { marginTop: 24 }]}>Browse all</Text>
           <View style={styles.grid}>
             {BROWSE_CATEGORIES.map(cat => (
               <TouchableOpacity
@@ -181,7 +305,7 @@ export default function SearchScreen() {
               {results.tracks.map((track, i) => (
                 <TouchableOpacity key={track.trackhash || i} style={styles.trackRow} onPress={() => handlePlayTrack(track)}>
                   {track.image ? (
-                    <Image source={{ uri: thumb(track.image) }} style={styles.trackThumb} />
+                    <Image source={{ uri: thumb(track.image) }} style={styles.trackThumb} transition={150} />
                   ) : (
                     <View style={[styles.trackThumb, { backgroundColor: '#282828', justifyContent: 'center', alignItems: 'center' }]}>
                       <Ionicons name="musical-note" size={18} color="#535353" />
@@ -209,7 +333,7 @@ export default function SearchScreen() {
                 {results.albums.map((album, i) => (
                   <View key={album.albumhash || i} style={{ width: 140 }}>
                     {album.image ? (
-                      <Image source={{ uri: thumb(album.image) }} style={styles.carouselArt} />
+                      <Image source={{ uri: thumb(album.image) }} style={styles.carouselArt} transition={150} />
                     ) : (
                       <View style={[styles.carouselArt, { backgroundColor: '#282828', justifyContent: 'center', alignItems: 'center' }]}>
                         <Ionicons name="disc" size={40} color="#535353" />
@@ -235,7 +359,7 @@ export default function SearchScreen() {
                 {results.artists.map((artist, i) => (
                   <View key={artist.artisthash || i} style={{ width: 100, alignItems: 'center' }}>
                     {artist.image ? (
-                      <Image source={{ uri: thumb(artist.image) }} style={styles.artistCircle} />
+                      <Image source={{ uri: thumb(artist.image) }} style={styles.artistCircle} transition={150} />
                     ) : (
                       <View style={[styles.artistCircle, { backgroundColor: '#282828', justifyContent: 'center', alignItems: 'center' }]}>
                         <Ionicons name="person" size={36} color="#535353" />
@@ -264,7 +388,7 @@ const styles = StyleSheet.create({
   avatar: {
     width: 32, height: 32, borderRadius: 16,
     backgroundColor: '#3B82F6', justifyContent: 'center', alignItems: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
   avatarText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   headerTitle: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
@@ -307,4 +431,16 @@ const styles = StyleSheet.create({
   noResults: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   noResultsTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginTop: 20, textAlign: 'center' },
   noResultsSub: { color: '#b3b3b3', fontSize: 14, marginTop: 8, textAlign: 'center' },
+
+  // Recent Searches
+  recentContainer: { marginBottom: 12 },
+  recentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  recentTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  clearAllBtn: { color: colors.primary, fontSize: 13, fontWeight: '600' },
+  recentList: { gap: 12 },
+  recentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
+  recentText: { color: '#fff', fontSize: 15, fontWeight: '500' },
+
+  // Skeleton
+  skeletonRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
 });

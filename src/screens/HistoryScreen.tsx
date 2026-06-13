@@ -1,8 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Image, TouchableOpacity,
-  ActivityIndicator, RefreshControl, FlatList,
+  View, Text, StyleSheet, TouchableOpacity, RefreshControl, FlatList, Animated, Vibration,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -11,6 +11,51 @@ import { api, getImgUrl } from '../api/client';
 import { Track } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
+
+const SkeletonItem = ({ style }: { style: any }) => {
+  const opacity = useRef(new Animated.Value(0.4)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.8,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.4,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [opacity]);
+
+  return <Animated.View style={[{ backgroundColor: '#282828' }, style, { opacity }]} />;
+};
+
+function SkeletonLoader() {
+  return (
+    <View style={{ flex: 1, paddingHorizontal: 16 }}>
+      <FlatList
+        data={[1, 2, 3, 4, 5, 6]}
+        keyExtractor={(item) => String(item)}
+        renderItem={() => (
+          <View style={styles.trackRow}>
+            <SkeletonItem style={styles.thumb} />
+            <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+              <SkeletonItem style={{ width: '60%', height: 14, borderRadius: 4 }} />
+              <SkeletonItem style={{ width: '35%', height: 11, borderRadius: 4 }} />
+            </View>
+          </View>
+        )}
+      />
+    </View>
+  );
+}
 
 export default function HistoryScreen() {
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -40,6 +85,7 @@ export default function HistoryScreen() {
   const thumb = (path?: string) => getImgUrl(baseUrl, path, 'medium');
 
   const handlePlay = async (track: Track) => {
+    Vibration.vibrate(12);
     await playTrack(track, tracks);
     navigation.navigate('Player');
   };
@@ -48,7 +94,13 @@ export default function HistoryScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          onPress={() => {
+            Vibration.vibrate(10);
+            navigation.goBack();
+          }}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
           <Ionicons name="chevron-back" size={28} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>History</Text>
@@ -67,13 +119,17 @@ export default function HistoryScreen() {
       </View>
 
       {loading ? (
-        <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }} />
+        <SkeletonLoader />
       ) : (
         <FlatList
           data={tracks}
           keyExtractor={(item, i) => item.trackhash || `${i}`}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={15}
+          windowSize={6}
+          initialNumToRender={12}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Ionicons name="time-outline" size={48} color={colors.primary} />
@@ -84,7 +140,7 @@ export default function HistoryScreen() {
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.trackRow} onPress={() => handlePlay(item)} activeOpacity={0.7}>
               {item.image ? (
-                <Image source={{ uri: thumb(item.image) }} style={styles.thumb} />
+                <Image source={{ uri: thumb(item.image) }} style={styles.thumb} transition={150} />
               ) : (
                 <View style={[styles.thumb, styles.thumbPlaceholder]}>
                   <Ionicons name="musical-note" size={18} color="#535353" />

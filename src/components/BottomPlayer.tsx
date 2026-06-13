@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { usePlayer } from '../context/PlayerContext';
@@ -26,9 +27,15 @@ export default function BottomPlayer() {
     <View style={styles.container}>
       <View style={styles.innerContainer}>
         {currentTrack.image ? (
-          <Image source={{ uri: getImageUrl(currentTrack.image) }} style={styles.albumArt} />
+          <Image
+            source={{ uri: getImageUrl(currentTrack.image) }}
+            style={styles.albumArt}
+            transition={150}
+          />
         ) : (
-          <View style={styles.albumArt} />
+          <View style={[styles.albumArt, { justifyContent: 'center', alignItems: 'center' }]}>
+            <Ionicons name="musical-note" size={16} color="#b3b3b3" />
+          </View>
         )}
         <View style={styles.textContainer}>
           <Text style={styles.title} numberOfLines={1}>{currentTrack.title}</Text>

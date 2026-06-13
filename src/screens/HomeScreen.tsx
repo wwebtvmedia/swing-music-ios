@@ -1,15 +1,15 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, ActivityIndicator,
-  Image, TouchableOpacity, Dimensions, RefreshControl,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, RefreshControl, Animated, Vibration,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { colors } from '../theme/colors';
 import { api, getImgUrl } from '../api/client';
-import { Track, Playlist, Artist } from '../types';
+import { Track, Playlist } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
 
@@ -20,15 +20,91 @@ const CAROUSEL_W = 148;
 const AVATAR_PALETTES = [
   ['#FB923C', '#EC4899', '#A855F7'],
   ['#3B82F6', '#A855F7', '#EC4899'],
-  ['#A855F7', '#EC4899', '#F472B6'],
   ['#10B981', '#3B82F6', '#A855F7'],
   ['#EF4444', '#FB923C', '#EC4899'],
   ['#14B8A6', '#22D3EE', '#3B82F6'],
+  ['#8B5CF6', '#EC4899', '#FB923C'],
 ];
 
 function getAvatarColors(name: string): [string, string, string] {
   const idx = Math.abs(name.charCodeAt(0)) % AVATAR_PALETTES.length;
   return AVATAR_PALETTES[idx] as [string, string, string];
+}
+
+const SkeletonItem = ({ style }: { style: any }) => {
+  const opacity = useRef(new Animated.Value(0.4)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.8,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.4,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [opacity]);
+
+  return <Animated.View style={[{ backgroundColor: '#282828' }, style, { opacity }]} />;
+};
+
+export function SkeletonLoader({ insets }: { insets: any }) {
+  return (
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 16 }]} showsVerticalScrollIndicator={false}>
+        {/* Top bar skeleton */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+          <SkeletonItem style={{ width: 32, height: 32, borderRadius: 16, marginRight: 16 }} />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <SkeletonItem style={{ width: 56, height: 32, borderRadius: 16 }} />
+            <SkeletonItem style={{ width: 68, height: 32, borderRadius: 16 }} />
+          </View>
+        </View>
+
+        {/* 2x4 Grid skeleton */}
+        <View style={[styles.grid, { marginBottom: 24 }]}>
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+            <View key={n} style={[styles.gridItem, { overflow: 'hidden' }]}>
+              <SkeletonItem style={{ width: 56, height: 56 }} />
+              <View style={{ flex: 1, paddingHorizontal: 8, gap: 4 }}>
+                <SkeletonItem style={{ width: '80%', height: 12, borderRadius: 4 }} />
+              </View>
+            </View>
+          ))}
+        </View>
+
+        {/* Playlists Carousel skeleton */}
+        <SkeletonItem style={{ width: 140, height: 22, marginBottom: 16, borderRadius: 4 }} />
+        <View style={{ flexDirection: 'row', gap: 16, marginBottom: 32 }}>
+          {[1, 2].map((n) => (
+            <View key={n} style={{ width: 148, gap: 8 }}>
+              <SkeletonItem style={{ width: 148, height: 148, borderRadius: 4 }} />
+              <SkeletonItem style={{ width: '80%', height: 12, borderRadius: 4 }} />
+            </View>
+          ))}
+        </View>
+
+        {/* History Carousel skeleton */}
+        <SkeletonItem style={{ width: 100, height: 22, marginBottom: 16, borderRadius: 4 }} />
+        <View style={{ flexDirection: 'row', gap: 16 }}>
+          {[1, 2].map((n) => (
+            <View key={n} style={{ width: 148, gap: 8 }}>
+              <SkeletonItem style={{ width: 148, height: 148, borderRadius: 4 }} />
+              <SkeletonItem style={{ width: '80%', height: 12, borderRadius: 4 }} />
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
+  );
 }
 
 export default function HomeScreen() {
@@ -42,7 +118,6 @@ export default function HomeScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
 
-  // Display name: use stored username, fallback to 'Swing'
   const displayName = username || 'Swing';
   const avatarColors = getAvatarColors(displayName);
 
@@ -77,13 +152,13 @@ export default function HomeScreen() {
   const playlistImg = (path?: string) => getImgUrl(baseUrl, path, 'playlist');
 
   const handlePlayTrack = async (track: Track) => {
+    Vibration.vibrate(12);
     await playTrack(track, recentTracks);
     navigation.navigate('Player');
   };
 
-  // Build 2×4 grid tiles like the Android app
   const gridTiles = [
-    { key: 'liked',    title: 'Liked Songs', image: null, icon: 'heart',    color: '#5E5CE6', isLiked: true,   onPress: () => navigation.navigate('Favorites') },
+    { key: 'liked',    title: 'Liked Songs', image: null, icon: 'heart',    color: '#5E5CE6', isLiked: true,   onPress: () => { Vibration.vibrate(12); navigation.navigate('Favorites'); } },
     ...recentTracks.slice(0, 5).map((t, i) => ({
       key: `r${i}`,
       title: t.title || 'Unknown',
@@ -91,35 +166,30 @@ export default function HomeScreen() {
       icon: null, color: 'transparent', isLiked: false,
       onPress: () => handlePlayTrack(t),
     })),
-    { key: 'artists', title: 'Artists',     image: null, icon: 'person',   color: '#E22134', isLiked: false,  onPress: () => navigation.navigate('Artists') },
-    { key: 'albums',  title: 'Albums',      image: null, icon: 'disc',     color: '#40C8E0', isLiked: false,  onPress: () => navigation.navigate('Albums') },
-    { key: 'history', title: 'History',     image: null, icon: 'time',     color: '#FFD60A', isLiked: false,  onPress: () => navigation.navigate('History') },
+    { key: 'artists', title: 'Artists',     image: null, icon: 'person',   color: '#E22134', isLiked: false,  onPress: () => { Vibration.vibrate(12); navigation.navigate('Artists'); } },
+    { key: 'albums',  title: 'Albums',      image: null, icon: 'disc',     color: '#40C8E0', isLiked: false,  onPress: () => { Vibration.vibrate(12); navigation.navigate('Albums'); } },
+    { key: 'history', title: 'History',     image: null, icon: 'time',     color: '#FFD60A', isLiked: false,  onPress: () => { Vibration.vibrate(12); navigation.navigate('History'); } },
   ].slice(0, 8);
 
   if (loading) {
-    return (
-      <View style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
+    return <SkeletonLoader insets={insets} />;
   }
 
   return (
     <View style={styles.container}>
-      {/* Subtle top gradient */}
       <LinearGradient
         colors={['rgba(59,130,246,0.35)', colors.background]}
         style={[styles.topGradient, { height: 220 + insets.top }]}
       />
 
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 16 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 12 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         showsVerticalScrollIndicator={false}
       >
         {/* ─── Top Bar: Avatar + Tabs ─── */}
         <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
+          <TouchableOpacity onPress={() => { Vibration.vibrate(10); navigation.navigate('Settings'); }}>
             <LinearGradient colors={avatarColors} style={styles.avatar}>
               <Text style={styles.avatarText}>{displayName[0]?.toUpperCase() || 'S'}</Text>
             </LinearGradient>
@@ -129,7 +199,7 @@ export default function HomeScreen() {
               <TouchableOpacity
                 key={tab}
                 style={[styles.pill, activeTab === tab && styles.pillActive]}
-                onPress={() => setActiveTab(tab)}
+                onPress={() => { Vibration.vibrate(10); setActiveTab(tab); }}
               >
                 <Text style={[styles.pillText, activeTab === tab && styles.pillTextActive]}>{tab}</Text>
               </TouchableOpacity>
@@ -142,7 +212,7 @@ export default function HomeScreen() {
           {gridTiles.map((tile, i) => (
             <TouchableOpacity key={tile.key} style={styles.gridItem} onPress={tile.onPress} activeOpacity={0.75}>
               {tile.image ? (
-                <Image source={{ uri: tile.image }} style={styles.gridThumb} />
+                <Image source={{ uri: tile.image }} style={styles.gridThumb} transition={150} />
               ) : tile.isLiked ? (
                 <LinearGradient colors={['#450E74', '#C4B2F3']} style={styles.gridThumb}>
                   <Ionicons name="heart" size={22} color="#fff" />
@@ -177,10 +247,10 @@ export default function HomeScreen() {
                 <TouchableOpacity
                   key={pl.id || i}
                   style={styles.carouselItem}
-                  onPress={() => navigation.navigate('PlaylistDetail', { playlist: pl })}
+                  onPress={() => { Vibration.vibrate(12); navigation.navigate('PlaylistDetail', { playlist: pl }); }}
                 >
                   {(pl.image || pl.thumb) ? (
-                    <Image source={{ uri: playlistImg(pl.image || pl.thumb) }} style={[styles.carouselArt, { borderRadius: 4 }]} />
+                    <Image source={{ uri: playlistImg(pl.image || pl.thumb) }} style={[styles.carouselArt, { borderRadius: 4 }]} transition={150} />
                   ) : (
                     <View style={[styles.carouselArt, { backgroundColor: '#282828', justifyContent: 'center', alignItems: 'center', borderRadius: 4 }]}>
                       <Ionicons name="list" size={32} color="#535353" />
@@ -202,7 +272,7 @@ export default function HomeScreen() {
               {recentTracks.map((track, i) => (
                 <TouchableOpacity key={track.trackhash || i} style={styles.carouselItem} onPress={() => handlePlayTrack(track)}>
                   {track.image ? (
-                    <Image source={{ uri: thumb(track.image) }} style={styles.carouselArt} />
+                    <Image source={{ uri: thumb(track.image) }} style={styles.carouselArt} transition={150} />
                   ) : (
                     <View style={[styles.carouselArt, { backgroundColor: '#282828', justifyContent: 'center', alignItems: 'center' }]}>
                       <Ionicons name="musical-note" size={32} color="#535353" />
@@ -230,7 +300,7 @@ const styles = StyleSheet.create({
 
   // Top bar
   topBar: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-  avatar: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+  avatar: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   avatarText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   pills: { flexDirection: 'row', gap: 8 },
   pill: { backgroundColor: '#282828', borderRadius: 32, paddingHorizontal: 16, paddingVertical: 8 },
@@ -257,9 +327,6 @@ const styles = StyleSheet.create({
   carouselTitle: { color: '#fff', fontSize: 13, fontWeight: '600', marginTop: 10, marginBottom: 4 },
   carouselSub: { color: '#b3b3b3', fontSize: 12 },
 
-  // Artists
-  artistItem: { width: 100, alignItems: 'center', marginRight: 16 },
-  artistCircle: { width: 100, height: 100, borderRadius: 50 },
-  artistName: { color: '#fff', fontWeight: '600', textAlign: 'center', marginTop: 10, fontSize: 13 },
-  artistSub: { color: '#b3b3b3', fontSize: 12, textAlign: 'center' },
+  // Skeleton
+  skeletonRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
 });

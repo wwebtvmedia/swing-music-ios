@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { setApiCredentialsCache } from '../api/client';
 
 interface AuthContextType {
   accessToken: string | null;
@@ -39,6 +40,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setAccessToken(storedToken);
           setBaseUrl(storedBaseUrl);
           setUsername(storedUsername || '');
+          setApiCredentialsCache(storedBaseUrl, storedToken);
         }
       } catch (e) {
         console.error('Restoring token failed', e);
@@ -58,6 +60,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAccessToken(token);
       setBaseUrl(url);
       if (user) setUsername(user);
+      setApiCredentialsCache(url, token);
     } catch (e) {
       console.error('Storing token failed', e);
     }
@@ -67,6 +70,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await SecureStore.deleteItemAsync('accessToken');
       setAccessToken(null);
+      setApiCredentialsCache(null, null);
     } catch (e) {
       console.error('Deleting token failed', e);
     }

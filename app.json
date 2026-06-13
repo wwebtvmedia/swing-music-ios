@@ -9,6 +9,11 @@
     "scheme": "swingmusicios",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#121212",
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#121212"
+    },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#121212",

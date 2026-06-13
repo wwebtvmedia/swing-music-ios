@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator,
-  Image, Modal, ScrollView, Platform,
+  Modal, ScrollView, Platform, Animated, Vibration,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -22,6 +23,51 @@ interface FolderItem {
 type CombinedItem =
   | { id: string; type: 'folder'; folder: FolderItem }
   | { id: string; type: 'track'; track: Track };
+
+const SkeletonItem = ({ style }: { style: any }) => {
+  const opacity = useRef(new Animated.Value(0.4)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.8,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.4,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [opacity]);
+
+  return <Animated.View style={[{ backgroundColor: '#282828' }, style, { opacity }]} />;
+};
+
+function SkeletonLoader() {
+  return (
+    <View style={{ flex: 1, paddingHorizontal: 16 }}>
+      <FlatList
+        data={[1, 2, 3, 4, 5, 6, 7]}
+        keyExtractor={(item) => String(item)}
+        renderItem={() => (
+          <View style={styles.trackRow}>
+            <SkeletonItem style={{ width: 44, height: 44, borderRadius: 8 }} />
+            <View style={{ flex: 1, marginLeft: 16, gap: 6 }}>
+              <SkeletonItem style={{ width: '60%', height: 16, borderRadius: 4 }} />
+              <SkeletonItem style={{ width: '35%', height: 12, borderRadius: 4 }} />
+            </View>
+          </View>
+        )}
+      />
+    </View>
+  );
+}
 
 export default function FoldersScreen() {
   const [folders, setFolders] = useState<FolderItem[]>([]);
@@ -81,11 +127,13 @@ export default function FoldersScreen() {
   useEffect(() => { loadFolder(currentPath); }, [currentPath]);
 
   const navigateInto = (folder: FolderItem) => {
+    Vibration.vibrate(10);
     setPathStack(prev => [...prev, currentPath]);
     setCurrentPath(folder.path);
   };
 
   const navigateBack = () => {
+    Vibration.vibrate(10);
     if (pathStack.length === 0) {
       navigation.goBack();
       return;
@@ -96,12 +144,14 @@ export default function FoldersScreen() {
   };
 
   const handlePlayTrack = async (track: Track) => {
+    Vibration.vibrate(12);
     await playTrack(track, tracks);
     navigation.navigate('Player');
   };
 
   // Long press on a folder → open "add to playlist" sheet
   const handleLongPressFolder = async (folder: FolderItem) => {
+    Vibration.vibrate(15);
     setSelectedFolder(folder);
     setSheetVisible(true);
     setLoadingPlaylists(true);
@@ -156,12 +206,16 @@ export default function FoldersScreen() {
       )}
 
       {loading ? (
-        <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 60 }} />
+        <SkeletonLoader />
       ) : (
         <FlatList
           data={combinedData}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={15}
+          windowSize={6}
+          initialNumToRender={12}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Ionicons name="folder-open-outline" size={48} color={colors.primary} />
@@ -196,7 +250,7 @@ export default function FoldersScreen() {
               return (
                 <TouchableOpacity style={styles.trackRow} onPress={() => handlePlayTrack(track)} activeOpacity={0.7}>
                   {track.image ? (
-                    <Image source={{ uri: thumbUrl(track.image) }} style={styles.trackThumb} />
+                    <Image source={{ uri: thumbUrl(track.image) }} style={styles.trackThumb} transition={150} />
                   ) : (
                     <View style={[styles.trackThumb, { backgroundColor: '#282828', justifyContent: 'center', alignItems: 'center' }]}>
                       <Ionicons name="musical-note" size={20} color="#535353" />

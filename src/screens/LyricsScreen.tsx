@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Vibration, Animated,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -122,6 +122,44 @@ async function fetchLyrics(track?: Track | null): Promise<LyricsData> {
   }
 }
 
+const SkeletonItem = ({ style }: { style: any }) => {
+  const opacity = useRef(new Animated.Value(0.4)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.8,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.4,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [opacity]);
+
+  return <Animated.View style={[{ backgroundColor: 'rgba(255,255,255,0.08)' }, style, { opacity }]} />;
+};
+
+function SkeletonLoader() {
+  return (
+    <View style={{ gap: 24, marginTop: 12 }}>
+      <SkeletonItem style={{ width: '80%', height: 28, borderRadius: 6 }} />
+      <SkeletonItem style={{ width: '65%', height: 28, borderRadius: 6 }} />
+      <SkeletonItem style={{ width: '90%', height: 28, borderRadius: 6 }} />
+      <SkeletonItem style={{ width: '50%', height: 28, borderRadius: 6 }} />
+      <SkeletonItem style={{ width: '75%', height: 28, borderRadius: 6 }} />
+      <SkeletonItem style={{ width: '60%', height: 28, borderRadius: 6 }} />
+    </View>
+  );
+}
+
 export default function LyricsScreen() {
   const { currentTrack, position, seekToPosition } = usePlayer();
   const navigation = useNavigation<any>();
@@ -163,7 +201,13 @@ export default function LyricsScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 6 }}>
+        <TouchableOpacity
+          onPress={() => {
+            Vibration.vibrate(10);
+            navigation.goBack();
+          }}
+          style={{ padding: 6 }}
+        >
           <Ionicons name="chevron-down" size={28} color="#fff" />
         </TouchableOpacity>
         <View style={{ alignItems: 'center' }}>
@@ -187,7 +231,7 @@ export default function LyricsScreen() {
             <Text style={styles.emptySub}>Play a song to see its lyrics</Text>
           </View>
         ) : loading ? (
-          <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 60 }} />
+          <SkeletonLoader />
         ) : !hasContent ? (
           <View style={styles.empty}>
             <Ionicons name="document-text-outline" size={48} color={colors.primary} />
@@ -207,7 +251,10 @@ export default function LyricsScreen() {
                   !isCurrent && styles.lyricDimmed,
                 ]}
                 onLayout={e => { lineRefs.current[i] = e.nativeEvent.layout.y; }}
-                onPress={() => seekToPosition(line.time)}
+                onPress={() => {
+                  Vibration.vibrate(12);
+                  seekToPosition(line.time);
+                }}
               >
                 {line.text || '♪'}
               </Text>

@@ -9,14 +9,27 @@ const normalizeUrl = (raw: string): string => {
   return url;
 };
 
+let cachedBaseUrl: string | null = null;
+let cachedAccessToken: string | null = null;
+
+export const setApiCredentialsCache = (url: string | null, token: string | null) => {
+  cachedBaseUrl = url ? normalizeUrl(url) : null;
+  cachedAccessToken = token;
+};
+
 const getBase = async (): Promise<string> => {
+  if (cachedBaseUrl) return cachedBaseUrl;
   const raw = await SecureStore.getItemAsync('baseUrl');
   if (!raw) throw new Error('Base URL not set');
-  return normalizeUrl(raw);
+  cachedBaseUrl = normalizeUrl(raw);
+  return cachedBaseUrl;
 };
 
 const getToken = async (): Promise<string | null> => {
-  return SecureStore.getItemAsync('accessToken');
+  if (cachedAccessToken) return cachedAccessToken;
+  const raw = await SecureStore.getItemAsync('accessToken');
+  cachedAccessToken = raw;
+  return cachedAccessToken;
 };
 
 export const fetchApi = async (endpoint: string, options: RequestInit = {}) => {

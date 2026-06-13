@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
+import { usePlayer } from '../context/PlayerContext';
 import { colors } from '../theme/colors';
 import { api } from '../api/client';
 
@@ -30,6 +31,7 @@ interface SettingsRow  { title: string; sub: string; icon: any; color: string; o
 
 export default function SettingsScreen() {
   const { logout, baseUrl, username } = useAuth();
+  const { audioQuality, setAudioQuality } = usePlayer();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
 
@@ -52,6 +54,19 @@ export default function SettingsScreen() {
   ];
 
   const audioSection: SettingsRow[] = [
+    { title: 'Audio Quality', sub: `Streaming bitrate: ${audioQuality.toUpperCase()}`, icon: 'radio-outline', color: '#FB923C', onPress: () => {
+        Alert.alert(
+          'Select Audio Quality',
+          'Choose streaming bitrate quality:',
+          [
+            { text: 'Low (96kbps)', onPress: () => setAudioQuality('low') },
+            { text: 'Medium (192kbps)', onPress: () => setAudioQuality('medium') },
+            { text: 'High (320kbps)', onPress: () => setAudioQuality('high') },
+            { text: 'Cancel', style: 'cancel' }
+          ]
+        );
+      }
+    },
     { title: 'Lyrics',      sub: 'Synced & plain lyrics',    icon: 'text',          color: '#EC4899', onPress: () => navigation.navigate('Lyrics') },
     { title: 'History',     sub: 'Recently played tracks',   icon: 'time',          color: '#14B8A6', onPress: () => navigation.navigate('History') },
     { title: 'Now Playing', sub: 'Playback & audio',         icon: 'play-circle',   color: '#14B8A6', onPress: () => navigation.navigate('Player') },

@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, Image, TouchableOpacity, ActivityIndicator, Dimensions,
+  View, Text, StyleSheet, FlatList, TouchableOpacity, Dimensions, Animated, Vibration,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -12,6 +13,58 @@ import { useAuth } from '../context/AuthContext';
 
 const { width: W } = Dimensions.get('window');
 const ITEM_W = (W - 48) / 2;
+
+const SkeletonItem = ({ style }: { style: any }) => {
+  const opacity = useRef(new Animated.Value(0.4)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.8,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.4,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [opacity]);
+
+  return <Animated.View style={[{ backgroundColor: '#282828' }, style, { opacity }]} />;
+};
+
+function SkeletonLoader({ insets }: { insets: any }) {
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={styles.header}>
+        <SkeletonItem style={{ width: 28, height: 28, borderRadius: 14 }} />
+        <SkeletonItem style={{ width: 100, height: 22, borderRadius: 4 }} />
+        <View style={{ width: 28 }} />
+      </View>
+      <View style={{ flex: 1, paddingHorizontal: 16 }}>
+        <FlatList
+          data={[1, 2, 3, 4, 5, 6]}
+          numColumns={2}
+          keyExtractor={(item) => String(item)}
+          columnWrapperStyle={{ gap: 16, marginBottom: 24 }}
+          renderItem={() => (
+            <View style={{ width: ITEM_W }}>
+              <SkeletonItem style={styles.art} />
+              <SkeletonItem style={{ width: '70%', height: 14, borderRadius: 4, marginTop: 8 }} />
+              <SkeletonItem style={{ width: '40%', height: 11, borderRadius: 4, marginTop: 4 }} />
+            </View>
+          )}
+        />
+      </View>
+    </View>
+  );
+}
 
 export default function AlbumsScreen() {
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -48,17 +101,19 @@ export default function AlbumsScreen() {
   const thumb = (path?: string) => getImgUrl(baseUrl, path, 'medium');
 
   if (loading) {
-    return (
-      <View style={[styles.container, styles.center, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
+    return <SkeletonLoader insets={insets} />;
   }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          onPress={() => {
+            Vibration.vibrate(10);
+            navigation.goBack();
+          }}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
           <Ionicons name="chevron-back" size={28} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Albums</Text>
@@ -73,10 +128,14 @@ export default function AlbumsScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
         onEndReached={() => hasMore && loadAlbums()}
         onEndReachedThreshold={0.3}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        initialNumToRender={8}
         renderItem={({ item }) => (
           <View style={{ width: ITEM_W }}>
             {item.image ? (
-              <Image source={{ uri: thumb(item.image) }} style={styles.art} />
+              <Image source={{ uri: thumb(item.image) }} style={styles.art} transition={150} />
             ) : (
               <View style={[styles.art, { backgroundColor: '#282828', justifyContent: 'center', alignItems: 'center' }]}>
                 <Ionicons name="disc" size={40} color="#535353" />
